@@ -5,10 +5,12 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import mammoth from "mammoth";
+import { createRequire } from "module";
 import { extractText } from "unpdf";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 
+const require = createRequire(import.meta.url);
 
 // Intercept and silence non-fatal PDF.js standard fonts load warnings from process streams and console loggers
 const originalWarn = console.warn;
@@ -124,6 +126,16 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 // Body parsing configurations
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Dynamic .env reloader middleware to support immediate API key registration from Settings/dotenv
+app.use((req, res, next) => {
+  try {
+    dotenv.config({ override: true });
+  } catch (de) {
+    console.warn("Failed to reload dotenv config dynamically in request flow:", de);
+  }
+  next();
+});
 
 // Lazy initializer for Google GenAI with active key reloading
 let aiInstance: GoogleGenAI | null = null;
@@ -796,11 +808,10 @@ app.post("/api/analyze-resume", async (req: express.Request, res: express.Respon
 
     let parsedData: any = null;
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+      if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        throw new Error("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured.");
       }
 
-      const ai = getGoogleGenAI();
       const prompt = `Analyze the following resume text and perform a thorough realistic Applicant Tracking System (ATS) evaluation. Return a JSON object with:
       1. "ats_score": An integer (0 to 100) assessing market readiness.
       2. "strengths": An array of strings with 3-5 visual highlight strengths.
@@ -906,11 +917,65 @@ app.post("/api/analyze-resume", async (req: express.Request, res: express.Respon
         simulatedRole = "Data Scientist";
       }
 
-      // Simulate Salary
+      // Estimate years of experience accurately based on resume parsing rules
+      let experienceCount = 0;
+      
+      // Student check
+      const isStudent = 
+        /\b(undergrad|student|b\.tech|b\.e\.|m\.tech|bca|mca|b\.sc|m\.sc|bsc|msc|fresher|intern|internship|expected graduation|graduating in|ongoing|class of)\b/i.test(txtLower) &&
+        !/\b(senior|lead|manager|principal|director|years? of experience)\b/i.test(txtLower);
+
+      if (isStudent) {
+        experienceCount = txtLower.includes("intern") || txtLower.includes("project") ? 1 : 0;
+      } else {
+        const expRegexes = [
+          /(\d+)\s*\+?\s*years?\b/gi,
+          /(\d+)\s*\+?\s*yrs?\b/gi,
+          /experience[:\s]+(\d+)\s*years/gi
+        ];
+
+        let maxFoundYears = 0;
+        for (const regex of expRegexes) {
+          let match;
+          while ((match = regex.exec(txtLower)) !== null) {
+            const y = parseInt(match[1], 10);
+            if (y > 0 && y < 30 && y > maxFoundYears) {
+              maxFoundYears = y;
+            }
+          }
+        }
+
+        if (maxFoundYears > 0) {
+          experienceCount = maxFoundYears;
+        } else {
+          const jobMatches = (txtLower.match(/\b(engineer|developer|analyst|architect|manager|lead|intern|designer|specialist)\b/g) || []).length;
+          if (jobMatches >= 6) {
+            experienceCount = 5;
+          } else if (jobMatches >= 4) {
+            experienceCount = 3;
+          } else if (jobMatches >= 2) {
+            experienceCount = 2;
+          } else {
+            experienceCount = 1;
+          }
+        }
+      }
+
+      // Deduce Education reference dynamically
+      let deducedEducation = "Bachelor of Science in Computer Science / Related Tech domain";
+      const eduMatch = resumeText.match(/([A-Za-z\s]+(Institute|University|College|School|Academy|MTech|BTech|BSc|MSc|MBA|PHD)[A-Za-z\s,]*)/i);
+      if (eduMatch) {
+        deducedEducation = eduMatch[1].trim().replace(/\s+/g, " ");
+      }
+
+      // Simulate Salary based on dynamic location, role, and experience
       let simulatedCurrSal = "₹15,00,000 / year";
       let simulatedExpSal = "₹22,00,000 / year";
       if (simulatedLocation.includes("Seattle") || simulatedLocation.includes("Pittsburgh") || simulatedLocation.includes("San Francisco") || simulatedLocation.includes("New York")) {
-        if (simulatedRole.includes("Product Manager") || simulatedRole.includes("Staff") || simulatedRole.includes("Lead")) {
+        if (experienceCount === 0 || experienceCount === 1) {
+          simulatedCurrSal = "$85,000 / year";
+          simulatedExpSal = "$115,000 / year";
+        } else if (simulatedRole.includes("Product Manager") || simulatedRole.includes("Staff") || simulatedRole.includes("Lead") || experienceCount >= 5) {
           simulatedCurrSal = "$165,000 / year";
           simulatedExpSal = "$210,000 / year";
         } else {
@@ -918,36 +983,115 @@ app.post("/api/analyze-resume", async (req: express.Request, res: express.Respon
           simulatedExpSal = "$175,000 / year";
         }
       } else {
-        if (simulatedRole.includes("Product Manager") || simulatedRole.includes("Staff") || simulatedRole.includes("Lead")) {
+        if (experienceCount === 0 || experienceCount === 1) {
+          simulatedCurrSal = "₹6,00,000 / year";
+          simulatedExpSal = "₹10,00,000 / year";
+        } else if (simulatedRole.includes("Product Manager") || simulatedRole.includes("Staff") || simulatedRole.includes("Lead") || experienceCount >= 5) {
           simulatedCurrSal = "₹25,00,000 / year";
           simulatedExpSal = "₹35,00,000 / year";
-        } else if (simulatedRole.includes("Senior")) {
+        } else if (simulatedRole.includes("Senior") || experienceCount >= 3) {
           simulatedCurrSal = "₹18,00,000 / year";
           simulatedExpSal = "₹26,00,000 / year";
+        } else {
+          simulatedCurrSal = "₹12,00,000 / year";
+          simulatedExpSal = "₹18,00,000 / year";
         }
       }
 
+      // Dynamic ATS Score Calculation
+      let atsScore = 65; // base score
+
+      const hasEmail = /[\w.-]+@[\w.-]+\.\w+/.test(resumeText);
+      const hasPhone = /\+?\d[\d-\s()]{8,}/.test(resumeText);
+      if (hasEmail) atsScore += 5;
+      if (hasPhone) atsScore += 5;
+
+      const hasLinkedIn = /linkedin\.com/i.test(txtLower);
+      const hasGitHub = /github\.com/i.test(txtLower);
+      if (hasLinkedIn) atsScore += 5;
+      if (hasGitHub) atsScore += 5;
+
+      // Section check
+      if (/education/i.test(txtLower)) atsScore += 5;
+      if (/experience|employment|work history|objective/i.test(txtLower)) atsScore += 5;
+      if (/skills|technologies/i.test(txtLower)) atsScore += 5;
+      if (/project/i.test(txtLower)) atsScore += 5;
+
+      // Skill density
+      const numSkills = foundSkills.length;
+      atsScore += Math.min(15, numSkills * 1.5);
+
+      // Bullet points density and formatting
+      const bulletPointsCount = (resumeText.match(/([*•\-\u2022])/g) || []).length;
+      if (bulletPointsCount >= 10) {
+        atsScore += 10;
+      } else if (bulletPointsCount >= 5) {
+        atsScore += 5;
+      }
+
+      // Word count
+      const wordCount = resumeText.trim().split(/\s+/).length;
+      if (wordCount > 300) {
+        atsScore += 10;
+      } else if (wordCount > 150) {
+        atsScore += 5;
+      }
+
+      // Keep it within standard 55 - 98 range for realistic feedback
+      atsScore = Math.floor(Math.min(98, Math.max(50, atsScore)));
+
+      // Generate dynamic strengths, weaknesses and suggestions based on parsed stats
+      const strengths = [
+        "Structured layout with high structural parsing fidelity"
+      ];
+      if (hasEmail && hasPhone) {
+        strengths.push("Excellent inclusion of direct professional contact links");
+      }
+      if (foundSkills.length > 5) {
+        strengths.push(`Strong skills portfolio containing multiple technical assets (${foundSkills.slice(0, 4).join(", ")})`);
+      } else {
+        strengths.push("Clear professional identity matching standard technical frames");
+      }
+      if (bulletPointsCount > 5) {
+        strengths.push("Highly scannable work histories with action block bullet marks");
+      }
+
+      const weaknesses = [];
+      if (bulletPointsCount < 5) {
+        weaknesses.push("Sparse use of bullet points limit structural scanning speeds");
+      }
+      if (!txtLower.includes("metric") && !txtLower.includes("%") && !txtLower.includes("key indicator")) {
+        weaknesses.push("Lacks dynamic metrics (e.g. key performance indicators, percentages or numeric scale scopes)");
+      } else {
+        weaknesses.push("Could enrich quantitative impact statements to match standard premium levels");
+      }
+      if (!hasGitHub || !hasLinkedIn) {
+        weaknesses.push("Missing professional portfolio links (GitHub/LinkedIn) weakens digital authority");
+      } else {
+        weaknesses.push("Technical stack details could list visual framework context");
+      }
+
+      const suggestions = [
+        "Apply the Google X-Y-Z formula: Accomplished [X] as measured by [Y], by doing [Z]"
+      ];
+      if (bulletPointsCount < 5) {
+        suggestions.push("Convert paragraph layouts into 3-5 structured bullet points per project block");
+      }
+      if (!hasGitHub || !hasLinkedIn) {
+        suggestions.push("Incorporate direct hyperlinks to your professional GitHub repository and LinkedIn profile");
+      }
+      suggestions.push("Add a specific visual framework highlights section to make modern stacks scannable in 3 seconds");
+
       parsedData = {
-        ats_score: 82,
-        strengths: [
-          "Structured layout with high structural parsing fidelity",
-          "Clear professional identity matching standard technical frames",
-          "Highly scannable work histories with action verb introductions"
-        ],
-        weaknesses: [
-          "Lacks dynamic metrics (e.g. key performance indicators, percentages, or scale numbers)",
-          "Technical stack is listed but missing modern visual framework context"
-        ],
-        suggestions: [
-          "Apply the Google X-Y-Z formula: Accomplished [X] as measured by [Y], by doing [Z]",
-          "Add a visual framework highlights section to make modern stacks scannable in 3 seconds",
-          "Emphasize professional certifications or core cloud provider deployments if active"
-        ],
+        ats_score: atsScore,
+        strengths,
+        weaknesses,
+        suggestions,
         parsed: {
           name: candidateName,
           skills: foundSkills,
-          experienceCount: Math.max(2, Math.floor(Math.random() * 4) + 2),
-          education: ["Bachelor of Science in Computer Science / Related Tech domain"],
+          experienceCount: experienceCount,
+          education: [deducedEducation],
           location: simulatedLocation,
           role: simulatedRole,
           current_salary: simulatedCurrSal,
@@ -985,11 +1129,9 @@ app.post("/api/interview-question", async (req: express.Request, res: express.Re
     };
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+      if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        throw new Error("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured.");
       }
-
-      const ai = getGoogleGenAI();
 
       const historyStr = priorQA && priorQA.length > 0
         ? priorQA.map((qa: any, idx: number) => `Q${idx + 1}: ${qa.question}\nA${idx + 1}: ${qa.answer_transcript || "Spoken response and evaluated"}`).join("\n\n")
@@ -1154,8 +1296,8 @@ app.post("/api/generate-candidate-questions", async (req: express.Request, res: 
     };
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+      if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        throw new Error("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured.");
       }
 
       const mcqTarget = Math.floor(count / 2) || 1;
@@ -1300,11 +1442,9 @@ app.post("/api/evaluate-answer", async (req: express.Request, res: express.Respo
     };
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+      if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        throw new Error("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured.");
       }
-
-      const ai = getGoogleGenAI();
 
       const prompt = `You are an elite interviewer reviewing a candidate's spoken response.
       
@@ -1407,11 +1547,9 @@ Our evaluation modules analysed performance dimensions spanning structural conce
     };
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+      if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        throw new Error("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured.");
       }
-
-      const ai = getGoogleGenAI();
 
       const detailsStr = questions.map((q: any, i: number) => {
         const evaluation = q.scores || {};
@@ -1475,18 +1613,20 @@ app.post("/api/transcribe", async (req: express.Request, res: express.Response) 
     }
 
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+      if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+        throw new Error("Neither GEMINI_API_KEY nor GROQ_API_KEY is configured.");
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || "N/A";
       let text = "";
-      let engine = "Google Gemini Multimodal Speech Engine";
+      let engine = process.env.GROQ_API_KEY ? "Groq Whisper Speech Engine" : "Google Gemini Multimodal Speech Engine";
 
       // 1. Primary path: Call the modern Gemini 3.5 Multimodal Speech Engine
       try {
-        console.log("Running primary Google Gemini Multimodal Speech Engine...");
-        const ai = getGoogleGenAI();
+        console.log("Running primary transcription speech engine...");
+        if (process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+          getGoogleGenAI(); // Warmup Gemini key if only it is configured
+        }
 
         const response = await generateContentWithRetry({
           model: "gemini-3.5-flash",
@@ -1502,9 +1642,9 @@ app.post("/api/transcribe", async (req: express.Request, res: express.Response) 
         });
 
         text = (response.text || "").trim();
-        console.log("Google Gemini Multimodal transcription successful:", text);
+        console.log("Speech transcription completed successfully:", text);
       } catch (geminiErr: any) {
-        console.info("Gemini transcription path failed, will fall back to Google Cloud Speech REST API:", geminiErr.message || geminiErr);
+        console.info("Primary transcription path failed, will fall back to Google Cloud Speech REST API:", geminiErr.message || geminiErr);
       }
 
       // 2. Fallback path: Legacy Google Cloud Speech-to-Text REST transcription
