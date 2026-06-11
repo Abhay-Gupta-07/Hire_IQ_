@@ -524,7 +524,7 @@ export default function NewInterview({ onNavigate, theme = "dark" }: NewIntervie
         parsed: {
           name: parsedResult.parsed?.name || "Candidate",
           skills: parsedResult.parsed?.skills || [],
-          experienceCount: parsedResult.parsed?.experienceCount || 2,
+          experienceCount: parsedResult.parsed?.experienceCount ?? 2,
           education: parsedResult.parsed?.education || [],
         },
         created_at: new Date().toISOString(),
