@@ -5,12 +5,10 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import mammoth from "mammoth";
-import { createRequire } from "module";
 import { extractText } from "unpdf";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 
-const require = eval("require");
 
 // Intercept and silence non-fatal PDF.js standard fonts load warnings from process streams and console loggers
 const originalWarn = console.warn;
