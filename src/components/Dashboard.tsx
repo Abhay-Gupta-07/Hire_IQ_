@@ -244,6 +244,9 @@ export default function Dashboard({ onNavigate, onLogout, theme = "dark", toggle
     isQuotaExhausted: boolean;
   }>({ hasApiKey: true, isQuotaExhausted: false });
 
+  const [hideApiKeyAlert, setHideApiKeyAlert] = useState(false);
+  const [hideQuotaAlert, setHideQuotaAlert] = useState(false);
+
   const handleSaveSmtpConfig = (host: string, port: string, user: string, pass: string, from: string) => {
     const config = { host, port, user, pass, from };
     localStorage.setItem("custom_smtp_config", JSON.stringify(config));
@@ -1825,53 +1828,6 @@ The performance metrics have been successfully synchronized from the central clo
             <span className="px-2.5 py-1 rounded bg-purple-500/10 text-[9px] font-mono uppercase tracking-wider font-extrabold shrink-0">Root Admin</span>
           </div>
         )}
-
-        {/* Gemini API Quota Alert */}
-        {apiHealth.isQuotaExhausted && (
-          <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs ${
-            isLight
-              ? "border-amber-200 bg-amber-50 text-amber-800"
-              : "border-amber-500/20 bg-amber-500/5 text-amber-400"
-          }`}>
-            <div className="flex items-start gap-3">
-              <span className="text-lg leading-none">⚠️</span>
-              <div>
-                <strong className="font-bold tracking-wide">Gemini API Free Tier Quota Exceeded (429 Request Limit)</strong>
-                <p className="opacity-90 text-[11px] mt-1 mb-2">
-                  The shared Gemini server API has temporarily reached the free tier limits (daily/minute quote limit of 20 requests). 
-                  <strong> Active local simulation fallback mode is operational: </strong> The app remains 100% functional, generating high-performance structured questions and dynamic evaluations using a robust repository of mock templates.
-                </p>
-                <div className={`p-2 rounded text-[10.5px] font-mono ${isLight ? 'bg-amber-100/40 text-amber-900' : 'bg-amber-500/10 text-amber-300 border border-amber-500/10'}`}>
-                  💡 <strong>To fix this and unlock custom realtime AI questions:</strong> You can supply your own personal <span className="bg-amber-500/10 px-1 py-0.5 rounded font-bold font-mono">GEMINI_API_KEY</span> via the <strong>Settings &gt; Secrets</strong> modal in AI Studio.
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Gemini API Missing Key Alert */}
-        {!apiHealth.hasApiKey && (
-          <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs ${
-            isLight
-              ? "border-rose-200 bg-rose-50 text-rose-800"
-              : "border-rose-500/20 bg-rose-500/5 text-rose-400"
-          }`}>
-            <div className="flex items-start gap-3">
-              <span className="text-lg leading-none">🚨</span>
-              <div>
-                <strong className="font-bold tracking-wide">Gemini API Key is not Configured</strong>
-                <p className="opacity-90 text-[11px] mt-1 mb-2">
-                  The <code className="px-1 py-0.5 bg-black/5 rounded">GEMINI_API_KEY</code> environment variable is missing on this container. 
-                  The workspace is automatically operating in **local simulation practice mode** using static questions and immediate standard answer grading.
-                </p>
-                <div className={`p-2 rounded text-[10.5px] font-mono ${isLight ? 'bg-rose-100/40 text-rose-900' : 'bg-rose-500/10 text-rose-300 border border-rose-500/10'}`}>
-                  💡 <strong>How to solve:</strong> Add the <span className="bg-rose-500/10 px-1 py-0.5 rounded font-bold font-mono">GEMINI_API_KEY</span> in your environment variables setup to unlock dynamic customized interviews.
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
         {/* Welcome Area Card */}
         <div className={`p-6 sm:p-8 rounded-2xl border flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 overflow-hidden relative transition-all duration-550 ${
           isLight ? "bg-white border-slate-200 shadow-md text-slate-800" : "bg-gradient-to-r from-slate-900 to-slate-900/40 border-slate-800/80 text-slate-100"
