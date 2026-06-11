@@ -1,0 +1,6 @@
+{
+  "name": "HIRE IQ",
+  "description": "AI-powered voice mock interview platform with resume analysis, real-time audio transcriptions, and downloadable performance reports.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
