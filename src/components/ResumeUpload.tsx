@@ -76,6 +76,7 @@ export default function ResumeUpload({ onNavigate, theme = "dark" }: ResumeUploa
   const [resumes, setResumes] = useState<ResumeData[]>([]);
   const [confirmToDeleteId, setConfirmToDeleteId] = useState<string | null>(null);
   const [isOfflineSimulation, setIsOfflineSimulation] = useState(false);
+  const [hideOfflineSimAlert, setHideOfflineSimAlert] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -155,7 +156,7 @@ export default function ResumeUpload({ onNavigate, theme = "dark" }: ResumeUploa
         parsed: {
           name: parsedResult.parsed?.name || "Candidate",
           skills: parsedResult.parsed?.skills || [],
-          experienceCount: parsedResult.parsed?.experienceCount || 2,
+          experienceCount: parsedResult.parsed?.experienceCount ?? 2,
           education: parsedResult.parsed?.education || [],
         },
         created_at: new Date().toISOString(),
@@ -281,17 +282,7 @@ export default function ResumeUpload({ onNavigate, theme = "dark" }: ResumeUploa
             </div>
           )}
 
-          {isOfflineSimulation && (
-            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500 text-xs flex gap-3 items-start animate-pulse">
-              <AlertCircle className="w-4.5 h-4.5 shrink-0" />
-              <div>
-                <span className="font-mono font-bold block mb-0.5 uppercase tracking-wide animate-pulse">Sandbox Simulation Active ({new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} offline bypass)</span>
-                <p className="font-sans font-light leading-relaxed">
-                  The Gemini API is currently offline or rate-limited. Our high-fidelity local ATS parser simulation has processed your resume safely so you can proceed to the sandbox room unhindered!
-                </p>
-              </div>
-            </div>
-          )}
+
 
           {!analysis ? (
             <>
@@ -565,7 +556,7 @@ export default function ResumeUpload({ onNavigate, theme = "dark" }: ResumeUploa
                         <Briefcase className="w-5 h-5 text-emerald-400" />
                         <div>
                           <span className="text-[9px] font-mono text-slate-500 uppercase block leading-none">Experience Index</span>
-                          <span className="text-xs font-bold text-white mt-1 block">{analysis.parsed?.experienceCount || 1} Years / Job Entries</span>
+                          <span className="text-xs font-bold text-white mt-1 block">{(analysis.parsed?.experienceCount ?? 0) === 0 ? "Entry Level / Student (0 Years)" : `${analysis.parsed?.experienceCount} ${analysis.parsed?.experienceCount === 1 ? "Year" : "Years"}`} / Job Entries</span>
                         </div>
                       </div>
 
