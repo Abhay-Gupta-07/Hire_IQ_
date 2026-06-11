@@ -10,7 +10,7 @@ import { extractText } from "unpdf";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 
-const require = createRequire(import.meta.url);
+const require = eval("require");
 
 // Intercept and silence non-fatal PDF.js standard fonts load warnings from process streams and console loggers
 const originalWarn = console.warn;
